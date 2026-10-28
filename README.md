@@ -88,6 +88,20 @@ npm run dev
 ```
 Open in browser: `http://localhost:5173`
 
+### Streamlit app
+
+The repository also includes a single-process Streamlit interface backed by the
+bundled SQLite fallback database. It provides the dashboard, catalog, students,
+circulation, fines, reservations, and database explorer views without requiring
+MySQL or a separate frontend server:
+
+```bash
+pip install -r requirements-streamlit.txt
+streamlit run streamlit_app.py
+```
+
+Open `http://localhost:8501`.
+
 ---
 
 ## 4. Evaluation Credentials
