@@ -3,7 +3,6 @@ import sqlite3
 import pymysql
 import os
 import bcrypt
-import pandas as pd
 from datetime import date, datetime, timedelta
 
 # Set Page Config
@@ -412,14 +411,14 @@ else:
             st.subheader("Your Completed Circulation History")
             past_loans = [l for l in loans_data if l["status"] not in ("Issued", "Overdue") or l["return_date"]]
             if past_loans:
-                df = pd.DataFrame([{
+                history_rows = [{
                     "Lending ID": l["lending_id"],
                     "Title": l["title"],
                     "Issue Date": l["issue_date"],
                     "Return Date": l.get("return_date", "-"),
                     "Status": l["status"]
-                } for l in past_loans])
-                st.dataframe(df, use_container_width=True)
+                } for l in past_loans]
+                st.dataframe(history_rows, width="stretch")
             else:
                 st.info("No past returned circulation records on file yet.")
 
@@ -457,38 +456,42 @@ else:
                 st.subheader("Books by Category")
                 cat_data = db_query("SELECT c.category_name, COUNT(b.book_id) as book_count FROM CATEGORY c LEFT JOIN BOOK b ON c.category_id = b.category_id GROUP BY c.category_id")
                 if cat_data:
-                    df_cat = pd.DataFrame(cat_data)
-                    st.bar_chart(df_cat.set_index("category_name"))
+                    st.bar_chart(
+                        {row["category_name"]: row["book_count"] for row in cat_data},
+                        width="stretch",
+                    )
 
             with c_chart2:
                 st.subheader("Circulation Status Breakdown")
                 status_data = db_query("SELECT status, COUNT(*) as count FROM LENDING_RECORD GROUP BY status")
                 if status_data:
-                    df_st = pd.DataFrame(status_data)
-                    st.bar_chart(df_st.set_index("status"))
+                    st.bar_chart(
+                        {row["status"]: row["count"] for row in status_data},
+                        width="stretch",
+                    )
 
         elif admin_page == "📚 Books & Catalog":
             st.markdown("<div class='main-header'>📚 Books & Catalog Management</div>", unsafe_allow_html=True)
             search_title = st.text_input("Search catalog:", "")
             books_res = db_query("SELECT b.book_id, b.title, b.author, b.isbn, b.copies_available, c.category_name FROM BOOK b JOIN CATEGORY c ON b.category_id = c.category_id ORDER BY b.book_id ASC")
             if books_res:
-                st.dataframe(pd.DataFrame(books_res), use_container_width=True)
+                st.dataframe(books_res, width="stretch")
 
         elif admin_page == "🔄 Lending & Circulation Desk":
             st.markdown("<div class='main-header'>🔄 Circulation Desk & Transactions</div>", unsafe_allow_html=True)
             loans = db_query("SELECT lr.lending_id, p.name as student_name, b.title as book_title, lr.issue_date, lr.due_date, lr.return_date, lr.status FROM LENDING_RECORD lr JOIN STUDENT s ON lr.student_id = s.student_id JOIN PERSON p ON s.student_id = p.person_id JOIN BOOK b ON lr.book_id = b.book_id ORDER BY lr.lending_id DESC LIMIT 50")
             if loans:
-                st.dataframe(pd.DataFrame(loans), use_container_width=True)
+                st.dataframe(loans, width="stretch")
 
         elif admin_page == "👥 Registered Students":
             st.markdown("<div class='main-header'>👥 Student Directory</div>", unsafe_allow_html=True)
             stus = db_query("SELECT s.student_id, p.name, p.email, s.department, s.join_year, CASE WHEN ug.student_id IS NOT NULL THEN 'Undergraduate' ELSE 'Postgraduate' END as student_type, COALESCE(ug.borrow_limit, pg.borrow_limit, 3) as borrow_limit FROM STUDENT s JOIN PERSON p ON s.student_id = p.person_id LEFT JOIN UNDERGRADUATE ug ON s.student_id = ug.student_id LEFT JOIN POSTGRADUATE pg ON s.student_id = pg.student_id")
             if stus:
-                st.dataframe(pd.DataFrame(stus), use_container_width=True)
+                st.dataframe(stus, width="stretch")
 
         elif admin_page == "🗄️ Database Explorer":
             st.markdown("<div class='main-header'>🗄️ Live Database Explorer</div>", unsafe_allow_html=True)
             table_choice = st.selectbox("Select Table to Inspect:", ["BOOK", "STUDENT", "PERSON", "CATEGORY", "LENDING_RECORD", "FINE", "ADMIN"])
             rows = db_query(f"SELECT * FROM {table_choice} LIMIT 50")
             if rows:
-                st.dataframe(pd.DataFrame(rows), use_container_width=True)
+                st.dataframe(rows, width="stretch")
