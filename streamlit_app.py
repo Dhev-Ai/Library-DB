@@ -3,7 +3,6 @@
 from pathlib import Path
 import sqlite3
 
-import pandas as pd
 import streamlit as st
 
 
@@ -27,8 +26,10 @@ def get_connection() -> sqlite3.Connection:
 
 
 @st.cache_data(ttl=30)
-def read_query(query: str, params: tuple = ()) -> pd.DataFrame:
-    return pd.read_sql_query(query, get_connection(), params=params)
+def read_query(query: str, params: tuple = ()) -> list[dict]:
+    cursor = get_connection().execute(query, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
 def execute_query(query: str, params: tuple = ()) -> None:
@@ -57,7 +58,7 @@ def render_dashboard() -> None:
           (SELECT COALESCE(SUM(amount), 0) FROM FINE WHERE paid_status = 'Unpaid') AS unpaid_fines,
           (SELECT COUNT(*) FROM ADMIN) AS admins
         """
-    ).iloc[0]
+    )[0]
     columns = st.columns(4)
     for column, label, value in zip(
         columns,
@@ -84,13 +85,16 @@ def render_dashboard() -> None:
                FROM CATEGORY c LEFT JOIN BOOK b ON b.category_id = c.category_id
                GROUP BY c.category_id ORDER BY titles DESC"""
         )
-        st.bar_chart(categories.set_index("category")[["titles", "copies"]], width="stretch")
+        st.bar_chart(
+            {row["category"]: {"titles": row["titles"], "copies": row["copies"]} for row in categories},
+            width="stretch",
+        )
     with right:
         st.subheader("Lending status")
         statuses = read_query(
             "SELECT status, COUNT(*) AS records FROM LENDING_RECORD GROUP BY status ORDER BY records DESC"
         )
-        st.bar_chart(statuses.set_index("status"), width="stretch")
+        st.bar_chart({row["status"]: row["records"] for row in statuses}, width="stretch")
 
     st.subheader("Due dates and recent activity")
     due = read_query(
@@ -151,10 +155,10 @@ def render_circulation() -> None:
         active = read_query(
             "SELECT lending_id, title FROM LENDING_RECORD lr JOIN BOOK b ON b.book_id = lr.book_id WHERE lr.status IN ('Issued', 'Overdue') ORDER BY lending_id"
         )
-        if not active.empty:
-            selected = st.selectbox("Record to return", active["lending_id"].tolist())
+        if active:
+            selected = st.selectbox("Record to return", [row["lending_id"] for row in active])
             if st.button("Mark as returned", type="primary"):
-                book_id = read_query("SELECT book_id FROM LENDING_RECORD WHERE lending_id = ?", (selected,)).iloc[0, 0]
+                book_id = read_query("SELECT book_id FROM LENDING_RECORD WHERE lending_id = ?", (selected,))[0]["book_id"]
                 execute_query(
                     "UPDATE LENDING_RECORD SET status = 'Returned', return_date = date('now') WHERE lending_id = ?",
                     (selected,),
@@ -189,8 +193,9 @@ def render_database() -> None:
     st.title("Database explorer")
     tables = read_query(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    )["name"].tolist()
-    table = st.selectbox("Table", tables)
+    )
+    table_names = [row["name"] for row in tables]
+    table = st.selectbox("Table", table_names)
     data = read_query(f'SELECT * FROM "{table}" LIMIT 500')
     st.caption(f"{len(data)} rows shown (maximum 500).")
     st.dataframe(data, width="stretch", hide_index=True)
